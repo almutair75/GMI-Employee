@@ -173,6 +173,8 @@ td.acts { white-space: nowrap; }
 .branch-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .branch-tabs .tab { border-color: var(--border); background: #fff; }
 .branch-tabs .tab small { opacity: .75; font-weight: 400; }
+.branch-tabs .tab.is-active { background: #1b2f5b; border-color: #1b2f5b; color: #fff; }
+.branch-tabs .tab.is-active small { opacity: .9; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; padding: 0 20px 20px; }
 fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; margin: 0; min-width: 0; }
 legend { color: var(--purple); font-weight: 700; padding: 0 6px; }
