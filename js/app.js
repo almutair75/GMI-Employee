@@ -693,15 +693,15 @@ function renderSettings(view, user) {
         <label class="field"><span>دمج البصمات المتكررة خلال (دقيقة)</span><input type="number" min="0" max="30" id="st-dup" value="${s.duplicateMinutes}"${dis}></label>
         <div class="field"><span>أيام الراحة</span><div class="checks">${WEEKDAYS.map((w, i) => `<label><input type="checkbox" data-rest="${i}"${s.restDays.includes(i) ? ' checked' : ''}${dis}> ${w}</label>`).join('')}</div></div>
       </fieldset>
-      <fieldset><legend>التأخير</legend>
+      <fieldset class="fs-late"><legend>التأخير</legend>
         <label class="field"><span>دقائق السماح</span><input type="number" min="0" max="120" id="st-grace" value="${s.lateness.graceMinutes}"${dis}></label>
-        <table class="days tiers"><thead><tr><th>من (د)</th><th>إلى (د)</th><th>الخصم</th><th>الوحدة</th><th>يبدأ من المرة</th></tr></thead>
+        <div class="tiers-wrap"><table class="days tiers"><thead><tr><th>من (د)</th><th>إلى (د)</th><th>الخصم</th><th>الوحدة</th><th>يبدأ من المرة</th></tr></thead>
         <tbody>${s.lateness.tiers.map((tr, i) => `<tr>
           <td><input type="number" data-tf="${i}" value="${tr.fromMinute}"${dis}></td>
           <td><input type="number" data-tt="${i}" value="${tr.toMinute ?? ''}" placeholder="مفتوح"${dis}></td>
           <td><input type="number" step="0.25" data-tv="${i}" value="${tr.value}"${dis}></td>
           <td><select data-tu="${i}"${dis}><option value="hours"${tr.unit === 'hours' ? ' selected' : ''}>ساعة</option><option value="day"${tr.unit === 'day' ? ' selected' : ''}>يوم</option></select></td>
-          <td><input type="number" min="1" max="31" data-to="${i}" value="${tr.startingOccurrence}"${dis}></td></tr>`).join('')}</tbody></table>
+          <td><input type="number" min="1" max="31" data-to="${i}" value="${tr.startingOccurrence}"${dis}></td></tr>`).join('')}</tbody></table></div>
         <p class="muted">كل فئة لها عدّاد مستقل يبدأ من جديد أول كل شهر، ومن المرة المحددة تُخصم كل مرة.</p>
       </fieldset>
       <fieldset><legend>البصمة الناقصة والغياب</legend>

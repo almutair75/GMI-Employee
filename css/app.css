@@ -169,8 +169,16 @@ tr.is-rest td { background: #f6faf3; }
 fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; margin: 0; min-width: 0; }
 legend { color: var(--purple); font-weight: 700; padding: 0 6px; }
 .grid .actions { grid-column: 1 / -1; }
-.tiers { display: block; overflow-x: auto; }
-.tiers input, .tiers select { min-width: 64px; }
+.tiers-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.tiers { table-layout: fixed; min-width: 420px; }
+.tiers th, .tiers td { padding: 6px; border-top: 0; }
+.tiers input, .tiers select { min-width: 0; padding: 4px 6px; text-align: center; }
+/* Lateness bands need room: their own full row, side by side with the others only on wide screens */
+.fs-late { grid-column: 1 / -1; }
+@media (min-width: 1500px) {
+  .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1fr); }
+  .fs-late { grid-column: auto; }
+}
 .steps { margin: 0 20px 14px; padding-inline-start: 18px; color: var(--text-mid); }
 .steps li { margin-bottom: 4px; }
 .preview { padding: 0 20px 20px; }
