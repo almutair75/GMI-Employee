@@ -3,7 +3,7 @@
  * and PDF (a print page at A4 or A3 → «Save as PDF»). HR corrections always get their own page.
  */
 
-import { CATEGORIES, LEGEND, SOURCES, WEEKDAYS, dayNote, fmt, hhmm, toMin } from './rules.js'
+import { CATEGORIES, LEGEND, SOURCES, WEEKDAYS, dayNote, fmt, hhmm, toMin } from './rules.js?v=4'
 
 const COMPANY = 'جفت مارت العالمية'
 const PURPLE = '2E1F5E'
@@ -103,7 +103,7 @@ async function sheetHeader(wb, ws, meta, title, lastCol, sub) {
   c2.alignment = { horizontal: 'center', vertical: 'middle' }
   ws.mergeCells(3, titleFrom, 3, lastCol)
   const c3 = ws.getCell(3, titleFrom)
-  c3.value = `صدر بواسطة: ${meta.by} — ${meta.at}`
+  c3.value = `صدر بواسطة: ${meta.by} — ${meta.at}${meta.source ? ` — مصدر البصمة: ${meta.source}` : ''}`
   c3.font = { size: 9, color: { argb: 'FF6B637E' }, name: 'Arial' }
   c3.alignment = { horizontal: 'center', vertical: 'middle' }
 }
@@ -143,7 +143,7 @@ async function monthlySheet(wb, meta, rows) {
   const dates = rows[0]?.days.map(d => d.date) ?? []
   const heads = ['م', 'رقم البصمة', 'الاسم', 'الرقم الوظيفي', 'مقطوع (س)', 'ناقص (س)', ...dates.map(d => `${Number(d.slice(8))}\n${SHORT_DAYS[wd(d)]}`), 'إضافي معتمد', 'الخصم المحسوب (س)', 'الخصم النهائي (س)', 'الفرق', 'الإجمالي']
   const last = heads.length
-  await sheetHeader(wb, ws, meta, 'كشف الدوام الشهري', last, `${meta.title} — من ${meta.period.from} إلى ${meta.period.to} — ${meta.settings.standardPeriodDays} يوم · ${meta.settings.standardPeriodDays * meta.settings.standardDayHours} ساعة`)
+  await sheetHeader(wb, ws, meta, `كشف الدوام الشهري${meta.branchName ? ` — ${meta.branchName}` : ''}`, last, `${meta.title} — من ${meta.period.from} إلى ${meta.period.to} — ${meta.settings.standardPeriodDays} يوم · ${meta.settings.standardPeriodDays * meta.settings.standardDayHours} ساعة`)
   const hr = ws.getRow(5)
   heads.forEach((h, i) => {
     const c = hr.getCell(i + 1)
@@ -194,7 +194,7 @@ async function individualSheet(wb, meta, r, name) {
   const ws = wb.addWorksheet(name, { views: [{ rightToLeft: true, state: 'frozen', ySplit: 8 }] })
   const heads = ['التاريخ', 'اليوم', 'البصمات', 'دخول', 'خروج', 'تأخير (د)', 'بعد نهاية الدوام (د)', 'الخصم', 'ملاحظة', 'الساعات']
   const last = heads.length
-  await sheetHeader(wb, ws, meta, 'كشف الدوام الفردي', last, `${r.employee.name} — من ${meta.period.from} إلى ${meta.period.to}`)
+  await sheetHeader(wb, ws, meta, 'كشف الدوام الفردي', last, `${r.employee.name}${meta.branchName ? ` — ${meta.branchName}` : ''} — من ${meta.period.from} إلى ${meta.period.to}`)
   const facts = [
     ['الاسم', r.employee.name, 'رقم البصمة', num(r.employee.deviceId), 'الرقم الوظيفي', r.employee.jobNo || '—'],
     ['رقم الهوية', r.employee.idNumber || '—', 'تاريخ المباشرة', r.employee.hireDate || '—', 'بداية الدوام', r.employee.shiftStart || meta.settings.shiftStart],
@@ -347,14 +347,17 @@ export async function exportExcel(payload) {
 
 /** Rows plus the full HR log of their days (the view keeps only the latest entry per field). */
 function withEdits(rows) {
-  const all = JSON.parse(localStorage.getItem('gmi-employee:v1') ?? '{}').edits ?? []
+  let all = []
+  try {
+    all = JSON.parse(localStorage.getItem('gmi-employee:v1') ?? '{}').edits ?? []
+  } catch {}
   return rows.map(r => ({ ...r, allEdits: all.filter(e => e.deviceId === r.employee.deviceId && e.date >= r.days[0]?.date && e.date <= r.days[r.days.length - 1]?.date).sort((a, b) => (a.at < b.at ? -1 : 1)) }))
 }
 
 // ————————————————— PDF (print page) —————————————————
 
 function pdfHead(meta, title, sub) {
-  return `<header class="hd"><img src="${new URL('assets/logo.png', location.href)}" alt=""><div class="ttl"><h1>${esc(COMPANY)} — ${esc(title)}</h1><p>${esc(sub)}</p></div><div class="meta">صدر بواسطة<br><b>${esc(meta.by)}</b><br>${esc(meta.at)}</div></header>`
+  return `<header class="hd"><img src="${new URL('assets/logo.png', location.href)}" alt=""><div class="ttl"><h1>${esc(COMPANY)} — ${esc(title)}</h1><p>${esc(sub)}</p></div><div class="meta">صدر بواسطة<br><b>${esc(meta.by)}</b><br>${esc(meta.at)}${meta.source ? `<br>مصدر البصمة: ${esc(meta.source)}` : ''}</div></header>`
 }
 
 function legendHtml() {
@@ -363,7 +366,7 @@ function legendHtml() {
 
 function monthlyHtml(meta, rows) {
   const dates = rows[0]?.days.map(d => d.date) ?? []
-  return `${pdfHead(meta, 'كشف الدوام الشهري', `${meta.title} — من ${meta.period.from} إلى ${meta.period.to} — ${meta.settings.standardPeriodDays} يوم · ${meta.settings.standardPeriodDays * meta.settings.standardDayHours} ساعة`)}
+  return `${pdfHead(meta, `كشف الدوام الشهري${meta.branchName ? ` — ${meta.branchName}` : ''}`, `${meta.title} — من ${meta.period.from} إلى ${meta.period.to} — ${meta.settings.standardPeriodDays} يوم · ${meta.settings.standardPeriodDays * meta.settings.standardDayHours} ساعة`)}
   <table class="ts"><colgroup><col class="c-s"><col class="c-id"><col class="c-nm"><col class="c-n"><col class="c-n">${dates.map(() => '<col>').join('')}<col class="c-n"><col class="c-w"><col class="c-w"><col class="c-n"><col class="c-w"></colgroup>
   <thead><tr><th>م</th><th>رقم البصمة</th><th>الاسم</th><th>مقطوع</th><th>ناقص</th>${dates.map(d => `<th class="${meta.settings.restDays.includes(wd(d)) ? 'rest' : ''}">${Number(d.slice(8))}<small>${SHORT_DAYS[wd(d)]}</small></th>`).join('')}<th>إضافي معتمد</th><th>الخصم المحسوب (س)</th><th>الخصم النهائي (س)</th><th>الفرق</th><th>الإجمالي</th></tr></thead>
   <tbody>${rows.map((r, n) => `<tr><td>${n + 1}</td><td>${esc(r.employee.deviceId)}</td><td class="nm">${esc(r.employee.name)}</td><td>${fmt(r.totals.cut || '')}</td><td>${fmt(r.totals.missing || '')}</td>
@@ -380,7 +383,7 @@ function monthlyHtml(meta, rows) {
 
 function individualHtml(meta, r) {
   const tt = r.totals
-  return `${pdfHead(meta, 'كشف الدوام الفردي', `من ${meta.period.from} إلى ${meta.period.to}`)}
+  return `${pdfHead(meta, 'كشف الدوام الفردي', `${meta.branchName ? `${meta.branchName} — ` : ''}من ${meta.period.from} إلى ${meta.period.to}`)}
   <table class="facts"><tr><th>الاسم</th><td>${esc(r.employee.name)}</td><th>رقم البصمة</th><td>${esc(r.employee.deviceId)}</td><th>الرقم الوظيفي</th><td>${esc(r.employee.jobNo || '—')}</td></tr>
   <tr><th>رقم الهوية</th><td>${esc(r.employee.idNumber || '—')}</td><th>تاريخ المباشرة</th><td>${esc(r.employee.hireDate || '—')}</td><th>بداية الدوام</th><td>${esc(r.employee.shiftStart || meta.settings.shiftStart)}</td></tr></table>
   <table class="dy"><thead><tr><th>التاريخ</th><th>البصمات</th><th>دخول</th><th>خروج</th><th>تأخير (د)</th><th>بعد النهاية (د)</th><th>الخصم</th><th>ملاحظة</th><th>الساعات</th></tr></thead>
@@ -505,23 +508,24 @@ const COLS = [
   ['jobNo', ['الرقم الوظيفي', 'job', 'jobno']],
   ['idNumber', ['رقم الهوية', 'الهوية', 'id number', 'iqama']],
   ['hireDate', ['تاريخ المباشرة', 'المباشرة', 'hire', 'start date']],
+  ['branch', ['الفرع', 'branch']],
   ['shiftStart', ['بداية الدوام', 'shift', 'shift start']],
 ]
 
 export async function employeesTemplate() {
   const wb = new window.ExcelJS.Workbook()
   const ws = wb.addWorksheet('الموظفون', { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] })
-  const heads = ['رقم البصمة', 'الاسم', 'الرقم الوظيفي', 'رقم الهوية', 'تاريخ المباشرة', 'بداية الدوام']
+  const heads = ['رقم البصمة', 'الاسم', 'الرقم الوظيفي', 'رقم الهوية', 'تاريخ المباشرة', 'الفرع', 'بداية الدوام']
   heads.forEach((h, i) => {
     const c = ws.getCell(1, i + 1)
     c.value = h
     headCell(c)
   })
-  ;[12, 34, 14, 16, 16, 14].forEach((w, i) => (ws.getColumn(i + 1).width = w))
+  ;[12, 34, 14, 16, 16, 20, 14].forEach((w, i) => (ws.getColumn(i + 1).width = w))
   ws.getCell(2, 1).value = 1
   ws.getCell(2, 2).value = 'اكتب الاسم الكامل هنا'
   ws.getCell(2, 5).value = '2024-01-01'
-  ws.getCell(2, 6).value = '08:00'
+  ws.getCell(2, 6).value = 'الفرع الرئيسي'
   const buf = await wb.xlsx.writeBuffer()
   download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'نموذج الموظفين.xlsx')
 }
@@ -548,7 +552,7 @@ export async function readEmployeesFile(file) {
     const ws = wb.worksheets[0]
     ws.eachRow({ includeEmpty: false }, row => {
       const r = []
-      for (let i = 1; i <= Math.max(6, row.cellCount); i++) r.push(cellText(row.getCell(i).value))
+      for (let i = 1; i <= Math.max(7, row.cellCount); i++) r.push(cellText(row.getCell(i).value))
       table.push(r)
     })
   }
@@ -563,7 +567,7 @@ export async function readEmployeesFile(file) {
     const name = String(r[idx.name] ?? '').trim()
     if (!id || !name) continue
     const rec = { deviceId: String(Number(id)), name }
-    for (const k of ['jobNo', 'idNumber', 'hireDate', 'shiftStart']) rec[k] = idx[k] >= 0 ? String(r[idx[k]] ?? '').trim() : ''
+    for (const k of ['jobNo', 'idNumber', 'hireDate', 'branch', 'shiftStart']) rec[k] = idx[k] >= 0 ? String(r[idx[k]] ?? '').trim() : ''
     if (rec.shiftStart && toMin(rec.shiftStart) === null) rec.shiftStart = ''
     out.push(rec)
   }

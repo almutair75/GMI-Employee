@@ -3,7 +3,9 @@
  *  - Lateness = whole minutes after the shift start (08:06:59 → 6). Grace, then tiers; each tier keeps its own
  *    counter per calendar month; from the tier's starting occurrence every time is deducted.
  *  - Missing check-in / check-out: own monthly counter, own deduction.
- *  - No punch on a working day → absence (for review); deducted only when the absence rule is switched on.
+ *  - No punch on a working day → absence (for review) until HR classifies it: absence with an excuse and absence
+ *    without an excuse each deduct their own number of days (per branch). Optionally an unclassified day counts
+ *    as without excuse straight away.
  *  - Early departure is recorded, never deducted; time after the shift end is shown, never counted as overtime.
  *  - Day hours = standard hours − deducted hours − deducted days × standard hours.
  *  - Net hours = sum of the period + «cut» hours + «missing» hours (both in the employee's favour);
@@ -17,28 +19,27 @@ export const CATEGORIES = {
   B_TRIP: { label: 'مهمة عمل', color: '9CC3E6', hours: 'std' },
   EID: { label: 'عيد', color: 'CDBFE8', hours: 'std' },
   P_TIME: { label: 'إذن', color: 'FFF2A8', hours: 'std' },
-  Z_TIME: { label: 'غياب', color: 'F4A6A6', hours: 0 },
+  Z_TIME: { label: 'غياب بدون عذر', color: 'F4A6A6', absence: 'unexcused' },
+  A_EXC: { label: 'غياب بعذر', color: 'F9D2B4', absence: 'excused' },
   X_TIME: { label: 'استثناء', color: 'F8C58C', hours: 'std' },
   LWP: { label: 'بدون راتب', color: 'F6C4DC', hours: 0 },
   M_TIME: { label: 'مرضية', color: 'B99AD6', hours: 'std' },
   ABSENCE_REVIEW: { label: 'غياب للمراجعة', color: 'F4A6A6' },
 }
 /** Codes HR can put on a day (the legend of the sheet). */
-export const DAY_CODES = ['L_DAYS', 'B_TRIP', 'EID', 'P_TIME', 'Z_TIME', 'X_TIME', 'LWP', 'M_TIME']
-export const LEGEND = ['L_DAYS', 'B_TRIP', 'WEEKEND', 'EID', 'P_TIME', 'Z_TIME', 'X_TIME', 'LWP', 'M_TIME']
+export const DAY_CODES = ['L_DAYS', 'B_TRIP', 'EID', 'P_TIME', 'A_EXC', 'Z_TIME', 'X_TIME', 'LWP', 'M_TIME']
+export const LEGEND = ['L_DAYS', 'B_TRIP', 'WEEKEND', 'EID', 'P_TIME', 'A_EXC', 'Z_TIME', 'X_TIME', 'LWP', 'M_TIME']
 export const SOURCES = { lateness: 'تأخير', missing_punch: 'بصمة ناقصة', absence: 'غياب' }
 export const WEEKDAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
 export const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
 
-export const DEFAULT_SETTINGS = {
-  periodStartDay: 21,
-  standardDayHours: 8,
-  standardPeriodDays: 30,
+/** Rules that belong to a branch (each branch has its own hours, rest days and lateness bands). */
+export const BRANCH_RULE_KEYS = ['shiftStart', 'shiftEnd', 'restDays', 'lateness', 'missingPunch', 'absence']
+
+export const DEFAULT_BRANCH_RULES = {
   restDays: [5], // Friday
   shiftStart: '08:00',
   shiftEnd: '',
-  /** Two punches closer than this are one punch (double press on the device). */
-  duplicateMinutes: 2,
   lateness: {
     graceMinutes: 5,
     tiers: [
@@ -49,7 +50,41 @@ export const DEFAULT_SETTINGS = {
     ],
   },
   missingPunch: { active: true, unit: 'hours', value: 4, startingOccurrence: 1 },
-  absence: { active: false, unit: 'day', value: 1 },
+  /** Days deducted for one day of absence; autoUnexcused = an unclassified no-punch day counts as without excuse. */
+  absence: { excusedDays: 1, unexcusedDays: 2, autoUnexcused: false },
+}
+
+export const newBranch = (name, from = DEFAULT_BRANCH_RULES) => ({
+  id: `br-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+  name,
+  ...structuredClone(Object.fromEntries(BRANCH_RULE_KEYS.map(k => [k, from[k] ?? DEFAULT_BRANCH_RULES[k]]))),
+})
+
+export const DEFAULT_SETTINGS = {
+  periodStartDay: 21,
+  standardDayHours: 8,
+  standardPeriodDays: 30,
+  /** Two punches closer than this are one punch (double press on the device). */
+  duplicateMinutes: 2,
+  branches: [{ ...newBranch('الفرع الرئيسي'), id: 'main' }],
+}
+
+export const branchOf = (settings, emp) => settings.branches.find(b => b.id === emp?.branchId) ?? settings.branches[0]
+
+/** Period rules + the employee's branch rules in one object (what the calculation reads). */
+export function rulesFor(settings, emp) {
+  const b = branchOf(settings, emp)
+  return { ...settings, ...Object.fromEntries(BRANCH_RULE_KEYS.map(k => [k, b[k]])), absence: absenceRule(b.absence), branch: b }
+}
+
+/** Absence rule with defaults (older saves had one «active» switch). */
+export function absenceRule(a) {
+  const d = DEFAULT_BRANCH_RULES.absence
+  return {
+    excusedDays: Number.isFinite(a?.excusedDays) ? a.excusedDays : d.excusedDays,
+    unexcusedDays: Number.isFinite(a?.unexcusedDays) ? a.unexcusedDays : d.unexcusedDays,
+    autoUnexcused: typeof a?.autoUnexcused === 'boolean' ? a.autoUnexcused : a?.active === true,
+  }
 }
 
 export const round2 = n => Math.round((Number(n) || 0) * 100) / 100
@@ -168,16 +203,21 @@ export function computeDays(p) {
       items: [],
       hours: null,
     }
+    const absenceKind = mark ? CATEGORIES[mark.code]?.absence : null
     if (mark) {
       d.status = 'mark'
       d.category = mark.code
+      if (absenceKind) {
+        const days = absenceKind === 'excused' ? settings.absence.excusedDays : settings.absence.unexcusedDays
+        if (days > 0) d.items.push({ source: 'absence', unit: 'day', proposed: days })
+      }
     } else if (rest) {
       d.status = hasTime ? 'rest_worked' : 'rest'
       d.category = 'WEEKEND'
     } else if (!hasTime) {
       d.status = 'absence'
       d.category = 'ABSENCE_REVIEW'
-      if (settings.absence.active) d.items.push({ source: 'absence', unit: settings.absence.unit, proposed: settings.absence.value })
+      if (settings.absence.autoUnexcused && settings.absence.unexcusedDays > 0) d.items.push({ source: 'absence', unit: 'day', proposed: settings.absence.unexcusedDays })
     } else {
       const start = toMin(shiftStart)
       if (io.inMin !== null && start !== null) {
@@ -217,7 +257,7 @@ export function computeDays(p) {
     d.proposedDays = round2(d.items.filter(i => i.unit === 'day').reduce((s, i) => s + i.proposed, 0))
     d.finalHours = round2(d.items.filter(i => i.unit === 'hours').reduce((s, i) => s + i.final, 0))
     d.finalDays = round2(d.items.filter(i => i.unit === 'day').reduce((s, i) => s + i.final, 0))
-    if (d.status === 'mark') {
+    if (d.status === 'mark' && !absenceKind) {
       const h = CATEGORIES[mark.code]?.hours
       d.hours = h === 'std' ? std : 0
     } else if (d.status === 'rest' || d.status === 'rest_worked') d.hours = std

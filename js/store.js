@@ -3,7 +3,7 @@
  * The backup file moves the data to another device.
  */
 
-import { DEFAULT_SETTINGS } from './rules.js'
+import { DEFAULT_SETTINGS, DEFAULT_BRANCH_RULES, BRANCH_RULE_KEYS, newBranch } from './rules.js?v=4'
 
 const KEY = 'gmi-employee:v1'
 
@@ -18,9 +18,10 @@ export const USERS = [
 function empty() {
   return {
     settings: structuredClone(DEFAULT_SETTINGS),
-    employees: [], // { deviceId, name, jobNo, idNumber, hireDate, shiftStart }
-    punches: {}, // deviceId → ['YYYY-MM-DD HH:MM:SS', …] (as read from the device, never edited)
-    imports: [], // { at, by, file, from, to, read, added }
+    employees: [], // { deviceId, name, jobNo, idNumber, hireDate, branchId, shiftStart }
+    /** Numbered imports; each keeps its own punches as read from the device (never edited):
+     *  { id, no, at, by, file, from, to, read, added, rows: { deviceId: ['YYYY-MM-DD HH:MM:SS', …] } } */
+    imports: [],
     edits: [], // { id, deviceId, date, field: 'in'|'out', kind: 'fill'|'correct', original, value, note, by, at }
     marks: [], // { deviceId, date, code, note, by, at }
     waivers: [], // { deviceId, date, source, proposed, final, reason, by, at }
@@ -34,9 +35,7 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return empty()
-    const s = JSON.parse(raw)
-    const base = empty()
-    return { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) } }
+    return normalize(JSON.parse(raw))
   } catch {
     return empty()
   }
@@ -53,9 +52,27 @@ export function save() {
 
 export const db = () => state
 
-export function replaceAll(next) {
+/** Older saves kept one set of hours at the top level: they become the first branch. */
+function normalize(s) {
   const base = empty()
-  state = { ...base, ...next, settings: { ...base.settings, ...(next.settings ?? {}) } }
+  const settings = { ...base.settings, ...(s.settings ?? {}) }
+  if (!Array.isArray(s.settings?.branches) || !s.settings.branches.length) {
+    settings.branches = [{ ...newBranch('الفرع الرئيسي', { ...DEFAULT_BRANCH_RULES, ...(s.settings ?? {}) }), id: 'main' }]
+  }
+  for (const k of BRANCH_RULE_KEYS) delete settings[k]
+  // Older saves kept every punch in one list: they become import #1
+  let imports = Array.isArray(s.imports) ? s.imports.filter(i => i && i.rows) : []
+  if (s.punches && Object.keys(s.punches).length && !imports.length) {
+    const read = Object.values(s.punches).reduce((n, l) => n + l.length, 0)
+    imports = [{ id: 'imp-legacy', no: 1, at: s.imports?.[0]?.at ?? '', by: s.imports?.[0]?.by ?? '', file: 'بيانات سابقة', from: '', to: '', read, added: read, rows: s.punches }]
+  }
+  const out = { ...base, ...s, settings, imports }
+  delete out.punches
+  return out
+}
+
+export function replaceAll(next) {
+  state = normalize(next)
   save()
 }
 
